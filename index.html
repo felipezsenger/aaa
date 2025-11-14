@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detector de Humor com Webcam</title>
+    
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        
+        h1 {
+            color: #333;
+        }
+
+        /* Este contêiner é importante para posicionar o texto sobre o vídeo */
+        #container-video {
+            position: relative;
+            border: 5px solid #555;
+            border-radius: 10px;
+            overflow: hidden; /* Garante que o texto não saia da borda */
+        }
+
+        /* O vídeo será espelhado, como em uma chamada de vídeo */
+        video {
+            width: 720px;
+            height: 560px;
+            object-fit: cover;
+            transform: scaleX(-1); /* Espelha o vídeo */
+        }
+
+        /* Caixa que mostrará o status e o humor */
+        #status-box {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Detector de Humor com Webcam</h1>
+    
+    <div id="container-video">
+        <video id="webcam" autoplay muted></video>
+        <div id="status-box">Iniciando...</div>
+    </div>
+
+    <script>
+        // 2. Referências aos elementos HTML
+        const video = document.getElementById('webcam');
+        const statusBox = document.getElementById('status-box');
+
+        // Mapeia as expressões de inglês para português
+        const traducoes = {
+            neutral: 'Neutro',
+            happy: 'Feliz',
+            sad: 'Triste',
+            angry: 'Com Raiva',
+            fearful: 'Com Medo',
+            disgusted: 'Com Nojo',
+            surprised: 'Surpreso'
+        };
+
+        // 3. Função para carregar os modelos de IA
+        // A IA precisa de "modelos" para saber como é um rosto,
+        // onde estão os pontos do rosto e o que é cada expressão.
+        async function carregarModelos() {
+            // Caminho para os modelos. Este é um link público
+            // que hospeda os arquivos necessários.
+            const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
+            
+            statusBox.innerText = 'Carregando modelos...';
+
+            // Carrega todos os modelos necessários em paralelo
+            await Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+                faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
+            ]);
+
+            statusBox.innerText = 'Modelos carregados!';
+            iniciarWebcam();
+        }
+
+        // 4. Função para iniciar a webcam
+        async function iniciarWebcam() {
+            try {
+                // Pede permissão e obtém o stream da webcam
+                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Erro ao acessar a webcam:", err);
+                statusBox.innerText = 'Erro ao acessar a webcam';
+            }
+        }
+
+        // 5. O "Loop" de Detecção
+        // Quando o vídeo começar a tocar, comece a detectar
+        video.addEventListener('play', () => {
+            statusBox.innerText = 'Detectando...';
+
+            // Define um loop para rodar a detecção a cada 200ms
+            setInterval(async () => {
+                // Detecta um único rosto no vídeo
+                const detections = await faceapi.detectSingleFace(
+                    video, 
+                    new faceapi.TinyFaceDetectorOptions()
+                ).withFaceLandmarks().withFaceExpressions();
+
+                if (detections) {
+                    // Encontramos um rosto! Agora, vamos achar a expressão dominante.
+                    const expressoes = detections.expressions;
+                    
+                    // Encontra a expressão com maior pontuação (probabilidade)
+                    let humor = '';
+                    let maiorPontuacao = 0;
+
+                    for (const [expressao, pontuacao] of Object.entries(expressoes)) {
+                        if (pontuacao > maiorPontuacao) {
+                            maiorPontuacao = pontuacao;
+                            humor = expressao;
+                        }
+                    }
+
+                    // Traduz e exibe o humor
+                    statusBox.innerText = traducoes[humor] || 'Analisando...';
+                } else {
+                    statusBox.innerText = 'Nenhum rosto detectado';
+                }
+            }, 200); // 200ms = 5 detecções por segundo
+        });
+
+        // 6. Inicia tudo
+        carregarModelos();
+
+    </script>
+</body>
+</html>
